@@ -27,7 +27,7 @@ def get_api_key():
 
   return api_key
 
-def test(url):
+def test(url = ''):
   api_key = get_api_key()
 
   r = requests.get(url, headers = {'Authorization': f'Bearer {api_key}'})
@@ -52,19 +52,23 @@ class ElementTypes:
   ]
 
   tags = {
-    'paragraph': ['<p>', '</p>'],
+    'paragraph': ['<p{attribs}>', '</p>'],
     #'heading\-[1-6]+': ['<h\1', '</h\1>'],
-    'heading-1': ['<h1>', '</h1>'],
-    'heading-2': ['<h2>', '</h2>'],
-    'heading-3': ['<h3>', '</h3>'],
-    'heading-4': ['<h4>', '</h4>'],
-    'heading-5': ['<h5>', '</h5>'],
-    'heading-6': ['<h6>', '</h6>'],
-    'list-unordered': ['<ul>', '</ul>'],
-    'list-ordered': ['<ol>', '</ol>'],
-    'list-item': ['<li>', '</li>'],
+    'heading-1': ['<h1{attribs}>', '</h1>'],
+    'heading-2': ['<h2{attribs}>', '</h2>'],
+    'heading-3': ['<h3{attribs}>', '</h3>'],
+    'heading-4': ['<h4{attribs}>', '</h4>'],
+    'heading-5': ['<h5{attribs}>', '</h5>'],
+    'heading-6': ['<h6{attribs}>', '</h6>'],
+    'list-unordered': ['<ul{attribs}>', '</ul>'],
+    'list-ordered': ['<ol{attribs}>', '</ol>'],
+    'list-item': ['<li{attribs}>', '</li>'],
     'text': ['', ''],
-    'link': ['<a{attrib}>', '</a>'],
+    'link': ['<a{attribs}>', '</a>'],
+  }
+
+  attribs = {
+    'ref': {'key': 'url', 'html_attrib': 'href'}
   }
 
 class GitbookNode(ABC):
@@ -99,10 +103,12 @@ class GitbookNode(ABC):
 class Node(GitbookNode):
   #data # dict of raw data 
   #children
-  #node_type
+  #node_type block, inline, etc
+  #element_type paragraph, heading-1, etc
   #tags # list of [open_tag, close_tag]
   #marks # list of marks
   #depth # int from root (0)
+  #attribs dict of attrib: value
 
   def __init__(self):
     self.children = []
@@ -112,9 +118,15 @@ class Node(GitbookNode):
     self.marks = None
     self.depth = 0
     self.element_type = None
+    self.attribs = {}
   
+  # load the data from a data dict returned by gitbooks api
+  # data dict is the response['document']
+  # recursively adds children from nodes/leaves
   def loads(self, data, depth = 0):
+    #print(f'node loads data: {data}')
     self.node_type = data['object']
+    self.data = data
     if 'type' in data.keys():
       self.element_type = data['type']
     
@@ -151,34 +163,61 @@ class Node(GitbookNode):
     self.children.append(child)
     return self
 
+  # set the attributes of the html element from
+  # the 'data' dict 
+  def set_attribs(self):
+    # attributes appear to be held in 'data'
+    # a dict of dicts for each attrib 
+    # (e.g. 'ref': {'kind': 'url', 'url': 'http...'})
+    if 'data' in self.data.keys():
+      for key, attrib in self.data['data'].items():
+        try:
+          lookup = ElementTypes.attribs[key]
+          value = attrib[lookup['key']]
+          self.attribs[lookup['html_attrib']] = value
+        except KeyError:
+          print(f'missing in {self.data["data"]}')
+          pass
+    return self
+
+  # get a string representation of the attributes for 
+  # subtitution into tag
+  def get_attrib_string(self):
+    return ' '.join([f'{k}="{v}"' for k, v in self.attribs.items()])
+
+  # set the start and end tags in self.tags
+  # calls the set_attribs method to add attributes from 
+  # 'data' and then creates the correctly formatted tag
   def set_tags(self):
+    # make sure we have empty tags if no element_type set
+    # otherwise, lookup tags from ElementTypes.tags
     if self.element_type == None:
       self.tags = ['', '']
     else:
       #poss_tags = [re.sub(i[0], i[1], self.element_type) for i in ElementTypes.tags.items() if re.match(i[0], self.element_type)]
       self.tags = ElementTypes.tags[self.element_type]
+
+    # insert the attributes from self.attribs dict
+    self.set_attribs()
+    attribs = ''
+    if len(self.attribs.keys()) > 0:
+      attribs = self.get_attrib_string()
+      attribs = f' {attribs}'
+    self.tags[0] = self.tags[0].format(attribs = attribs)
+
     return self
 
   def get_tags(self):
     return self.tags
 
   def outputstring(self):
-    print(self.element_type)
-    print(self.tags)
-    childoutput = '\n'.join(list(map(lambda c: c.outputstring(), self.children)))
-    return f'{self.tags[0]}{childoutput}{self.tags[1]}'
+    childoutput = ''.join(list(map(lambda c: c.outputstring(), self.children)))
+    end_chars = '\n' if self.node_type == 'block' else ''
+    return f'{self.tags[0]}{childoutput}{self.tags[1]}{end_chars}'
 
-class Link(Node):
-
-  def __init__(self):
-    super().__init__()
-    self.tags = ElementTypes.tags['link']
-    self.url = ''
-
-  def add_url(self):
-    self.url = self.data['ref']['url']
-    self.tags[0] = self.tags[0].format(attrib = f'href="{self.url}"')
-
+# Leaf class
+# similar to Node but for text only
+# tags are built from marks, objects representing <em>, <strong>, etc
 class Leaf(Node):
   #text
   #tags
@@ -201,13 +240,15 @@ class Leaf(Node):
     raise TypeError('Leaf object has no children')
 
   def loads(self, data, depth = 0):
-    print(data)
     self.node_type = data['object']
     if 'type' in data.keys():
       self.element_type = data['type']
     
     self.text = data['text']
     self.depth = depth
+
+    # marks contains objects representing <em> etc
+    # these are added to the tags and then compiled by set_tags
     for mark in data['marks']:
       self.add_tag(mark)
 
@@ -220,12 +261,10 @@ class Leaf(Node):
     return self
 
   def set_tags(self):
-    opening = reduce(lambda text, m: f'{t}{m[0]}', self.marks, '')
-    closing = reduce(lambda text, m: f'{t}{m[1]}', self.marks, '')
+    opening = reduce(lambda text, m: f'{text}{m[0]}', self.marks, '')
+    closing = reduce(lambda text, m: f'{text}{m[1]}', reversed(self.marks), '')
     self.tags = [opening, closing]
     return self
 
   def outputstring(self):
-    print(self.element_type)
-    print(self.tags)
     return f'{self.tags[0]}{self.text}{self.tags[1]}'
