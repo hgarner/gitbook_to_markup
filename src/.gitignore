@@ -1,0 +1,4 @@
+config.yaml
+*.sw*
+__pycache__
+*.pyc
