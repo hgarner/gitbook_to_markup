@@ -5,6 +5,7 @@ import os
 import re
 from abc import ABC, abstractmethod
 from functools import reduce
+from time import sleep
 
 # https://api.gitbook.com/v1/spaces/{space_id}/
 # https://api.gitbook.com/v1/spaces/{space_id}/content/
@@ -17,8 +18,7 @@ def get_api_key():
   if api_key == None:
     print('Using config as no GITBOOK_API env var present')
 
-    with open('config.yaml') as config_file:
-      config = yaml.load(config_file)
+    config = get_config()
 
     try:
       api_key = config['GITBOOK_API']
@@ -26,6 +26,60 @@ def get_api_key():
       raise Exception('missing GITBOOK_API var. please set and try again') from e
 
   return api_key
+
+def get_config():
+  with open('config.yaml') as config_file:
+    config = yaml.load(config_file)
+
+  return config
+
+def get_url(url):
+  api_key = get_api_key()
+  r = requests.get(url, headers = {'Authorization': f'Bearer {api_key}'})
+  return r.json()
+
+def find_all_paths(content):
+  paths = []
+  if 'path' in content.keys():
+    paths.append(content['path'])
+  if 'pages' in content.keys():
+    for page in content['pages']:
+      paths = paths + find_all_paths(page)
+  return paths
+
+# get all paths in list of paths provided
+# root_url must be in format https://api.gitbook.com/v1/spaces/{space_id}/content
+def get_all_paths(paths, root_url):
+  data = {}
+  for path in paths:
+    encoded_path = requests.utils.quote(path, safe = '')
+    url = f'{root_url}/path/{encoded_path}'
+    data[path] = get_url(url)
+    # wait for a second to stop hammering server
+    sleep(0.5)
+
+  return data
+
+# process dict of {path: jsondata, ...}
+# return dict of {path: Node, ...}
+def pathdata_to_nodes(data):
+  nodes = {}
+  for path, pathdata in data.items():
+    if 'document' not in pathdata.keys():
+      print(f'Skipping {path} as no "document" key')
+    else:
+      node = Node()
+      node.loads(pathdata['document'])
+      nodes[path] = node 
+  return nodes
+
+# process dict of {path: Node, ...}
+# return dict of {path: 'htmlstring', ...}
+def nodes_to_html(nodes):
+  htmls = {}
+  for path, node in nodes.items():
+    htmls[path] = node.outputstring()
+  return htmls
 
 def test(url = ''):
   api_key = get_api_key()
@@ -36,6 +90,41 @@ def test(url = ''):
   root.loads(data['document'], 0)
 
   return root
+
+# dump the dict of {path, 'htmlstring', ...} to single file
+# adds a div with id of path, '/' replaced with '_'
+def html_dict_to_file(html_dict, filepath):
+  wrapper = ['<div id="{path_id}">\n', '</div>\n']
+
+  with open(filepath, 'w') as output:
+    for path, html in html_dict:
+      path_id = re.sub('/', '_', path)
+      output.write(wrapper[0].format(path_id = path_id))
+      output.write(html)
+      output.write('\n')
+      output.write(wrapper[1])
+
+if __name__ == '__main__':
+  config = get_config()
+
+  try:
+    url = config['root_path']
+  except KeyError as e:
+    raise Exception('missing root_path var. please set and try again') from e
+
+  try:
+    config_filename = config['output_filename']
+    output_path = config['output_path']
+  except KeyError as e:
+    raise Exception('missing output_filename or output_path var. please set and try again') from e
+
+  space = gd.get_url(url)
+  paths = gd.find_all_paths(space)
+  data = gd.get_all_paths(paths, root_url = url)
+  nodes = gd.pathdata_to_nodes(data)
+  html = nodes_to_html(nodes)
+  output_filepath = os.path.join(output_path, output_filename)
+  html_dict_to_file(html, output_filepath)
 
 class ElementTypes:
   types = [
@@ -48,7 +137,8 @@ class ElementTypes:
     'list-ordered',
     'list-item',
     'text',
-    'link'
+    'link',
+    'table' # problematic
   ]
 
   tags = {
@@ -65,6 +155,7 @@ class ElementTypes:
     'list-item': ['<li{attribs}>', '</li>'],
     'text': ['', ''],
     'link': ['<a{attribs}>', '</a>'],
+    'table': ['<table{attribs}>', '</table>']
   }
 
   attribs = {
