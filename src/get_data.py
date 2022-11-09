@@ -96,14 +96,24 @@ def test(url = ''):
 # adds a div with id of path, '/' replaced with '_'
 def html_dict_to_file(html_dict, filepath):
   wrapper = ['<div id="{path_id}">\n', '</div>\n']
+  id_list = []
 
   with open(filepath, 'w') as output:
     for path, html in html_dict.items():
       path_id = re.sub('/', '_', path)
+      # add id to id_list for later writing
+      id_list.append(path_id) 
       output.write(wrapper[0].format(path_id = path_id))
       output.write(html)
       output.write('\n')
       output.write(wrapper[1])
+
+  print(f'Written output to {filepath}')
+
+  with open(f'{filepath}.ids', 'w') as f:
+    for path_id in id_list:
+      f.writelines(f'{path_id}\n')
+  print(f'Written id list to {filepath}.ids')
 
 if __name__ == '__main__':
   config = get_config()
