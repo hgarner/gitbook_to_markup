@@ -52,6 +52,7 @@ def find_all_paths(content):
 def get_all_paths(paths, root_url):
   data = {}
   for path in paths:
+    print(f'Getting path {path}')
     encoded_path = requests.utils.quote(path, safe = '')
     url = f'{root_url}/path/{encoded_path}'
     data[path] = get_url(url)
@@ -97,7 +98,7 @@ def html_dict_to_file(html_dict, filepath):
   wrapper = ['<div id="{path_id}">\n', '</div>\n']
 
   with open(filepath, 'w') as output:
-    for path, html in html_dict:
+    for path, html in html_dict.items():
       path_id = re.sub('/', '_', path)
       output.write(wrapper[0].format(path_id = path_id))
       output.write(html)
@@ -120,10 +121,12 @@ if __name__ == '__main__':
 
   space = gd.get_url(url)
   paths = gd.find_all_paths(space)
+  print(f'Found paths: {paths}')
   data = gd.get_all_paths(paths, root_url = url)
   nodes = gd.pathdata_to_nodes(data)
   html = nodes_to_html(nodes)
   output_filepath = os.path.join(output_path, output_filename)
+  print(f'Dumping to file {output_filepath}')
   html_dict_to_file(html, output_filepath)
 
 class ElementTypes:
@@ -184,11 +187,19 @@ class GitbookNode(ABC):
     pass
   
   @abstractmethod
+  # get a list of [openingtag, closingtag]
   def get_tags(self):
     pass
 
   @abstractmethod
+  # return string representation of self and all child nodes
   def outputstring(self):
+    pass
+
+  @abstractmethod
+  # import data from dict returned by gitbooks api
+  # add children from 'nodes' and 'leaves'
+  def loads(self):
     pass
 
 class Node(GitbookNode):
