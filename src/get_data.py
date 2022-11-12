@@ -92,10 +92,41 @@ def test(url = ''):
 
   return root
 
+def get_id_list(html_dict):
+  id_list = []
+  for path, html in html_dict.items():
+    path_id = re.sub('/', '_', path)
+    id_list.append(path_id) 
+
+  return id_list
+
+# convert the dict of {path, 'htmlstring', ...} to single string
+def html_dict_to_html_string(html_dict, wrapper = ['<div id="{path_id}">\n', '</div>\n']):
+  html_string = ''
+  for path, html in html_dict.items():
+    path_id = re.sub('/', '_', path)
+    opening_tag = wrapper[0].format(path_id = path_id)
+    html_string = f'{html_string}{opening_tag}{html}\n'
+    html_string = f'{html_string}{wrapper[1]}'
+
+  return html_string
+
+# convert the dict of {path, 'htmlstring', ...} to
+# component with x-data and x-show on each node
+def html_dict_to_component_string(html_dict, wrapper, component_wrapper):
+  component_wrapper = [r'''<div x-data="{ base_path: @entangle('base_path') }">''', '</div>']  
+  wrapper = [
+    '<div x-show="help_section == \'{path_id}\'">\n',
+    '</div>\n'
+  ]
+
+  html_inner_string = html_dict_to_html_string(html_dict, wrapper = wrapper)
+  
+  return f'{component_wrapper[0]}\n{html_inner_string}\n{component_wrapper[1]}'
+
 # dump the dict of {path, 'htmlstring', ...} to single file
 # adds a div with id of path, '/' replaced with '_'
-def html_dict_to_file(html_dict, filepath):
-  wrapper = ['<div id="{path_id}">\n', '</div>\n']
+def html_dict_to_file(html_dict, filepath, wrapper = ['<div id="{path_id}">\n', '</div>\n']):
   id_list = []
 
   with open(filepath, 'w') as output:
@@ -115,6 +146,18 @@ def html_dict_to_file(html_dict, filepath):
       f.writelines(f'{path_id}\n')
   print(f'Written id list to {filepath}.ids')
 
+# dump the string representation of the data to filepath
+# and the id_list list of ids to filepath.ids
+def dump_to_file(html_string, id_list, filepath):
+  with open(filepath, 'w') as output:
+    output.write(html_string)
+  print(f'Written output to {filepath}')
+
+  with open(f'{filepath}.ids', 'w') as f:
+    for path_id in id_list:
+      f.writelines(f'{path_id}\n')
+  print(f'Written id list to {filepath}.ids')
+  
 if __name__ == '__main__':
   config = get_config()
 
