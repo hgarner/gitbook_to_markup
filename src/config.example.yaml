@@ -1,2 +1,4 @@
 GITBOOK_API: gitbookauthtoken 
 root_path: https://api.gitbook.com/v1/spaces/{space_id}/content
+output_filename: theoutputfilename
+output_path: outputpathhere
