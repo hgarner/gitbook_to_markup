@@ -184,12 +184,13 @@ if __name__ == '__main__':
             return {
                 base_path: @entangle('base_path'),
                 get help_section() {
-                    return this.base_path == '' ? this.base_path : this.base_path+'_'+this.help_subsection;
+                    return this.base_path == '' ? this.help_subsection : this.base_path+'_'+this.help_subsection;
                 }
             }
         }
-    </script>'''
-  component_wrapper = [r'''<div x-data="{ base_path: @entangle('base_path') }">''', '</div>']  
+    </script>
+    '''
+  component_wrapper = [r'''<div x-data="data()">''', '</div>']  
   wrapper = [
     '<div x-show="help_section == \'{path_id}\'">\n',
     '</div>\n'
