@@ -189,6 +189,12 @@ class Node(GitbookNode):
     end_chars = '\n' if self.node_type == 'block' else ''
     return f'{self.tags[0]}{childoutput}{self.tags[1]}{end_chars}'
 
+# Default extends dict class to return 'auto' as a value if key missing
+# used for attribs so they have default values
+class AutoDefault(dict):
+  def __missing__(self, key):
+    return 'auto'
+
 # Leaf class
 # similar to Node but for text only
 # tags are built from marks, objects representing <em>, <strong>, etc
@@ -200,7 +206,11 @@ class Leaf(Node):
     'italic': ['<em>', '</em>'],
     'strong': ['<strong>', '</strong>'],
     'bold': ['<strong>', '</strong>'],
-    'underline': ['<u>', '</u>']
+    'underline': ['<u>', '</u>'],
+  }
+
+  style_tag = {
+    'color': ['<span style="color: {text}; background-colour: {background}">', '</span>'],
   }
 
   def __init__(self):
@@ -230,8 +240,17 @@ class Leaf(Node):
     return self
 
   def add_tag(self, mark):
-    mark = self.mark_tag[mark['type']]
-    self.marks.append(mark)
+    # tag may be in mark_tag or in style_tag, so check both
+    try:
+      mark_tags = self.mark_tag[mark['type']]
+    except KeyError:
+      mark_tags = self.style_tag[mark['type']]
+      # apply the style to the span
+      # note that the AutoDefault dict extension is used
+      # to replace missing attribs with 'auto'
+      mark_data = AutoDefault(mark['data'])
+      mark_tags[0] = mark_tags[0].format_map(mark_data)
+    self.marks.append(mark_tags)
     return self
 
   def set_tags(self):
