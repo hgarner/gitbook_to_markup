@@ -210,7 +210,7 @@ class Leaf(Node):
   }
 
   style_tag = {
-    'color': ['<span style="color: {text}; background-colour: {background}">', '</span>'],
+    'color': ['<span style="color: {text}; background-color: {background}">', '</span>'],
   }
 
   def __init__(self):
